@@ -121,4 +121,4 @@ if __name__=='__main__':
     this_dist.get_vector(vocab)
     context_dist.get_vector(vocab)
 
-    print this_dist.vector.partial_kl(context_dist.vector,'america')
+    print this_dist.vector.partial_kl(context_dist.vector,'word')

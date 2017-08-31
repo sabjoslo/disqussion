@@ -18,7 +18,7 @@ USERS_FILE='users.txt'
 VOCAB_DIR='VOCAB/'
 
 # Where the set of recognized vocabulary should be written.
-VOCAB_FILE='vocab.txt'
+VOCAB_FILE='example_vocab.txt'
 
 # Headers for tsv files.
 COL_KEYS=['USER','PARENT','TEXT','TIMESTAMP']

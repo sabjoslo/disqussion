@@ -11,7 +11,8 @@ api_bind=request(wait=True)
 
 for i in range(3):
     for j in range(3):
-        user,id_=api_bind.get_posts_for_one_user(n_posts=100,overwrite=True)
+        user,id_=api_bind.get_posts_for_one_user(n_posts=100,n_users=1,
+                                                 overwrite=True)
         for thread,timestamp in getAllThreadsByUser(user,id_):
             api_bind.get_post_data(thread=thread,user=user,timestamp=timestamp,id_=id_
                                 )
