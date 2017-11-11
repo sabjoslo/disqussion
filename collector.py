@@ -1,83 +1,28 @@
-import logging
 import json
+import logging
 import os
-import requests
 import time
-from config import *
+from wordplay.collectors import DisqusCollector
+from wordplay.utils import *
 from utils import *
 
-BASE_URL="https://disqus.com/api/3.0/"
 FORUM='breitbartproduction'
-include_=['unapproved','approved','flagged','highlighted']
+INCLUDE=['unapproved','approved','flagged','highlighted']
 
 # A wrapper for functions to interact directly with the Disqus API
-class request():
-    def __init__(self,wait=False):
-        startLog()
-        self.wait=wait
-        self.rate_limit=dict(limit=None,remaining=None,reset=None)
-    
-    # Returns a json object with the response to a query whose arguments
-    # are specified as arguments to the function.
-    def get_data(self,resource,output_type,**kwargs):
-        if self.rate_limit['remaining']==1:
-            if not self.wait:
-                raise Exception('Rate limit exceeded.')
-            else:
-                sleeptime=self.rate_limit['reset']-time.time()+60 # Buffer,
-                # just in case
-                logging.info('Sleeping for {} seconds.'.format(sleeptime))
-                time.sleep(sleeptime)
-        url=self._format_request(resource,output_type,**kwargs)
-        logging.info('Sending request to '+url)
-        response=requests.get(url)
-        assert response.status_code==200
-
-        # Update rate limit status
-        resp_headers=response.headers
-        self.rate_limit['limit']=int(resp_headers['X-Ratelimit-Limit'])
-        self.rate_limit['remaining']=int(resp_headers['X-Ratelimit-Remaining'])
-        self.rate_limit['reset']=float(resp_headers['X-Ratelimit-Reset'])
-
-        return json.loads(response.content)
-
-    # A helper function that formats API queries whose arguments are
-    # specified as arguments to the function.
-    def _format_request(self,resource,output_type,**kwargs):
-        if resource=='trends' and 'limit' in kwargs:
-            if kwargs['limit']>10:
-                logging.info('Resetting limit to 10 (maximum when asking for trending threads).')
-                kwargs['limit']=10
-        header_str='{}/{}.json?'.format(resource,output_type)
-        public_key_str='&api_key='+getPublicKey()
-        if resource=='threads':
-            assert 'thread' in kwargs
-        if resource=='users':
-            assert 'user' in kwargs
-        request_args=[]
-        for k,v in kwargs.items():
-            if not hasattr(v,'__iter__'):
-                request_args.append((k,v))
-            else:
-                for v_ in v:
-                    request_args.append((k,v_))
-        header_str+='&'.join('{}={}'.format(k,v) for k,v in request_args)
-        header_str+=public_key_str
-        return BASE_URL+header_str
-
-    # Retrieve the index of the next "page" of results (used to paginate
-    # through multiple pages of results)
-    def _get_next_val(self,data):
-        if data['cursor']['hasNext']:
-            return data['cursor']['next']
-        else:
-            return None
+class APIBind(DisqusCollector):
+    def __init__(self, forum=FORUM, include=INCLUDE, wait=False, log=True,
+                 id_=None):
+        DisqusCollector.__init__(self, forum=forum, include=include,
+                                 wait=False, log=log, id_=id_)
 
     # Returns as a json object the API's response to a query for thread
     # data.
     def get_thread_data(self,trending=True,n_threads=100):
         object_='trends' if trending else 'forums'
-        return self.get_data(object_,'listThreads',limit=n_threads,forum=FORUM)
+        response=self.get_data(object_,'listThreads',limit=n_threads,
+                               forum=self.forum)
+        return json.loads(response.content)
 
     # List only the thread ids returned by class function get_thread_data().
     def get_thread_ids(self,trending=True,n_threads=100):
@@ -93,12 +38,6 @@ class request():
             data_str+='{}\t'.format(kwargs[getColumnVar(col)])
         data_str=data_str.rstrip()
         return data_str
-
-    def _iso8601_to_unix(self,iso8601_str):
-        return time.mktime(time.strptime(iso8601_str,'%Y-%m-%dT%H:%M:%S'))
-
-    def _unix_to_iso8601(self,unix_str):
-        return time.strftime('%Y-%m-%dT%H:%M:%S',time.localtime(unix_str))
 
     # Retrieve data for posts to a thread in a window around a specific
     # point in time. Writes all retrieved data to a tsv file set by
@@ -119,20 +58,21 @@ class request():
     def get_post_data(self,thread,user,timestamp,id_=None,window=3600,
                       keep_anonymous=True):
         fn=getThreadFile(thread=thread,user=user,id_=id_)
-        timestamp_=self._iso8601_to_unix(timestamp)
+        timestamp_=iso8601_to_unix(timestamp)
         # Open tsv with thread id in file name
         with open(fn, 'a') as fh:
             # Write headers
             fh.write('\t'.join([ getColumnLabel(col) for col in COL_KEYS ]))
-            json_obj=self.get_data('threads','listPosts',thread=thread,
-                                   since=self._unix_to_iso8601(timestamp_-window),
-                                   order='asc',include=include_,forum=FORUM,
-                                   limit=100)
-            nextval=self._get_next_val(json_obj)
-            _created_at=self._unix_to_iso8601(timestamp_-window)
-            while self._iso8601_to_unix(_created_at)-timestamp_<window:
+            response=self.get_data('threads','listPosts',thread=thread,
+                                   since=unix_to_iso8601(timestamp_-window),
+                                   order='asc',limit=100,
+                                   include=self.include,forum=self.forum)
+            json_obj=json.loads(response.content)
+            nextval=self.get_next_val(json_obj)
+            _created_at=unix_to_iso8601(timestamp_-window)
+            while iso8601_to_unix(_created_at)-timestamp_<window:
                 for post in json_obj['response']:
-                    assert post['forum']==FORUM
+                    assert post['forum']==self.forum
                     assert post['thread']==thread
                     # Write post author and message to file.
                     if post['author']['isAnonymous'] and not keep_anonymous:
@@ -144,7 +84,7 @@ class request():
                     _parent=post['parent']
                     _msg=to_ascii(post['message'])
                     _created_at=post['createdAt']
-                    if self._iso8601_to_unix(_created_at)-timestamp_>=window:
+                    if iso8601_to_unix(_created_at)-timestamp_>=window:
                         break
                     data_str=self._get_data_str(user=_user,parent=_parent,
                                                 msg=_msg,
@@ -153,11 +93,12 @@ class request():
                 # Paginate through more results, if applicable.
                 if isinstance(nextval,type(None)):
                     break
-                json_obj=self.get_data('threads','listPosts',thread=thread,
+                response=self.get_data('threads','listPosts',thread=thread,
                                        since=_created_at,order='asc',
-                                       include=include_,cursor=nextval,
-                                       limit=100,forum=FORUM)
-                nextval=self._get_next_val(json_obj)
+                                       include=self.include,cursor=nextval,
+                                       limit=100,forum=self.forum)
+                json_obj=json.loads(response.content)
+                nextval=self.get_next_val(json_obj)
         return
     
     # Get list of n users from one thread. These user ids are saved to 
@@ -186,20 +127,22 @@ class request():
             logging.info('Found {} saved user ids.'.format(n_existing))
             readFileHandle.close()
         if len(users)<n:
-            json_obj=self.get_data('threads','listPosts',thread=thread,
-                                   forum=FORUM,limit=100)
+            response=self.get_data('threads','listPosts',thread=thread,
+                                   forum=self.forum,limit=100)
+            json_obj=json.loads(response.content)
         while len(users)<n:
             for d in json_obj['response']:
-                assert d['forum']==FORUM
+                assert d['forum']==self.forum
                 assert d['thread']==thread
                 if 'id' not in d['author'] or d['author']['isPrivate']:
                     continue
                 users.add(d['author']['id'])
                 if len(users)>=n:
                     break
-            nextval=self._get_next_val(json_obj)
-            json_obj=self.get_data('threads','listPosts',thread=thread,
-                                   forum=FORUM,cursor=nextval,limit=100)
+            nextval=self.get_next_val(json_obj)
+            response=self.get_data('threads','listPosts',thread=thread,
+                                   forum=self.forum,cursor=nextval,limit=100)
+            json_obj=json.loads(response.content)
             logging.info('Got {} users.'.format(len(users)))
         users=list(users)[:max(n_existing,n)]
         fileHandle=open(fileName,'w')
@@ -224,7 +167,7 @@ class request():
             if isinstance(limit,int):
                 if len(user_data)>=limit:
                     return 1
-            if post['forum']!=FORUM:
+            if post['forum']!=self.forum:
                 continue
             assert post['author']['id']==user
             info_dict=dict()
@@ -240,11 +183,12 @@ class request():
                      user=user,
                      limit=limit,
                      cursor=cursor,
-                     include=include_
+                     include=self.include
                     )
         kwargs_=dict([ (k,v) for k,v in kwargs_.items() if not
                        isinstance(v,type(None)) ])
-        return self.get_data('users','listPosts',**kwargs_)
+        response=self.get_data('users','listPosts',**kwargs_)
+        return json.loads(response.content)
 
     # Query, get and write all the post data for one user.
     def get_posts_for_one_user(self,user=None,n_posts=None,overwrite=False,
@@ -256,7 +200,7 @@ class request():
         json_obj=self._get_user_data(user=user)
         done=self._update_user_data(user,user_data,json_obj,limit=n_posts)
         while json_obj['cursor']['hasNext'] and not done:
-            nextval=self._get_next_val(json_obj)
+            nextval=self.get_next_val(json_obj)
             json_obj=self._get_user_data(user=user,cursor=nextval)
             done=self._update_user_data(user,user_data,json_obj,limit=n_posts)
         return self._write_user_data(user,user_data)

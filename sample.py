@@ -2,8 +2,8 @@
 if __name__=='__main__':
     refresh=False
 
-    from collector import request
-    api_bind=request(wait=True)
+    from collector import APIBind
+    api_bind=APIBind(wait=True)
 
     # Save a list of n users from a recently-trending post to a file
     # user.txt, save data for all the posts made by one of these users.
@@ -20,7 +20,7 @@ if __name__=='__main__':
     # posted by the specified user or not. Write two new tsv files: this.tsv
     # will contain all the posts written by the specified user, and
     # context.tsv will contain all the posts written by anyone else.
-    from core import classifier
+    from classifier import classifier
     from utils import getAllThreadFiles
 
     this_prefix='{}/this-{}'.format(user,id_)
@@ -43,16 +43,21 @@ if __name__=='__main__':
     # tokens. This model can be generated using core.sentences (see the docs
     # for that model on how to do this).
 
-    from core import token_distributions
+    from wordplay.core import token_distributions
     this_dist=token_distributions(files='{}.tsv'.format(this_prefix),
                                   phrase_model='example_phrase_model')
 
     # Add all the tokens in this.tsv to the object's corpus.
-    this_dist.build_corpus()
+    this_dist.build_corpus(column='Message')
+
     # Once the corpus is built, save it to disk for easy reuse.
-    this_dist.save_corpus('{}_corpus'.format(this_prefix))
+    from vocabulary import VOCAB_DIR
+    from utils import getRelPath
+    vocabfn='{}_corpus'.format(this_prefix)
+    vocabfn=getRelPath(VOCAB_DIR+vocabfn)
+    this_dist.save_corpus(vocabfn)
     tmp=this_dist.corpus
-    this_dist.load_corpus('{}_corpus'.format(this_prefix))
+    this_dist.load_corpus(vocabfn)
     # Or just pass the path of the saved corpus when initializing a new
     # instance
     # E.g. this_dist=token_distributions(corpus='this_corpus')
@@ -62,8 +67,10 @@ if __name__=='__main__':
     # Create a corpus based on context.tsv.
     context_dist=token_distributions(files='{}.tsv'.format(context_prefix),
                                      phrase_model='example_phrase_model')
-    context_dist.build_corpus()
-    context_dist.save_corpus('{}_corpus'.format(context_prefix))
+    context_dist.build_corpus(column='Message')
+    vocabfn='{}_corpus'.format(context_prefix)
+    vocabfn=getRelPath(VOCAB_DIR+vocabfn)
+    context_dist.save_corpus(vocabfn)
 
     # Now there are two new plain text files saved in a folder called VOCAB 
     # on disk. We can use the contents of these files to build a set of 
@@ -90,9 +97,14 @@ if __name__=='__main__':
 
     # Rebuild and resave the corpi in order to incorporate the new 
     # phrasegrams
-    this_dist.build_corpus()
-    this_dist.save_corpus('{}_corpus'.format(this_prefix))
-    context_dist.build_corpus()
+    this_dist.build_corpus(column='Message')
+    vocabfn='{}_corpus'.format(this_prefix)
+    vocabfn=getRelPath(VOCAB_DIR+vocabfn)
+    this_dist.save_corpus(vocabfn)
+
+    context_dist.build_corpus(column='Message')
+    vocabfn='{}_corpus'.format(context_prefix)
+    vocabfn=getRelPath(VOCAB_DIR+vocabfn)
     context_dist.save_corpus('{}_corpus'.format(context_prefix))
 
     # Calculate the frequency distribution.
@@ -118,7 +130,7 @@ if __name__=='__main__':
     reset_vocab()
     from vocabulary import get_vocab
     vocab=get_vocab()
-    this_dist.get_vector(vocab)
-    context_dist.get_vector(vocab)
+    this_dist.set_vector(vocab)
+    context_dist.set_vector(vocab)
 
     print this_dist.vector.partial_kl(context_dist.vector,'word')

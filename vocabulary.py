@@ -2,8 +2,8 @@
 """
 
 import os
+from wordplay.core import sentences
 from config import *
-from core import sentences
 from utils import *
 
 # Set the contents of VOCAB_FILE equal to the union of the sets of tokens 

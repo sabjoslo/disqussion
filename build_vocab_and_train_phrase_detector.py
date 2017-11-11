@@ -1,13 +1,14 @@
 """
 Used to generate vocab.txt.bz2 and example_phrase_model."""
 
-from collector import request
+from wordplay.core import token_distributions
+from collector import APIBind
+from classifier import classifier
 from config import *
-from core import classifier,token_distributions
 from utils import *
 from vocabulary import reset_vocab,train_phrase_detector
 
-api_bind=request(wait=True)
+api_bind=APIBind(wait=True)
 
 for i in range(3):
     for j in range(3):

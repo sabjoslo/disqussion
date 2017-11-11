@@ -39,11 +39,6 @@ def getThreadFile(thread,user,id_=None):
         id_=''.join(random.choice(string.lowercase) for _ in range(4))
     return getRelPath('{}/thread{}-{}.tsv'.format(user,thread,id_))
 
-# Encode a non-ASCII string to ASCII. If a non-ASCII character is
-# encountered, delete it.
-def to_ascii(s):
-    return s.encode('ascii','ignore')
-
 # A generator for all the threads a given user posted to
 def getAllThreadsByUser(user,id_):
     import json
@@ -72,8 +67,3 @@ def unzip_(fn):
     import os
 
     os.system('bunzip2 -v {}.bz2'.format(fn))
-
-def startLog():
-    import logging
-
-    logging.basicConfig(format='%(asctime)s : %(levelname)s : %(message)s',level=logging.INFO)

@@ -4,16 +4,17 @@
 import json
 import os
 import time
+from wordplay.utils import *
 import collector
-from collector import include_
+from collector import INCLUDE
 from config import *
 from utils import *
 collector.USERS_FILE='test{}'.format(collector.USERS_FILE)
 
-api_bind=collector.request()
+api_bind=collector.APIBind()
 
 def test_format_request():
-    kwargs=dict(user='01',include=include_,limit=100)
+    kwargs=dict(user='01',include=INCLUDE,limit=100)
     request_args=[]
     for k,v in kwargs.items():
         if k=='include':
@@ -24,7 +25,7 @@ def test_format_request():
     req=api_bind._format_request(resource='users',output_type='listPosts',
                                  **kwargs)
     ans='{url}{resource}/{o_t}.json?{joined_str}&api_key={key}'.format(
-                                                  url=collector.BASE_URL,
+                                                  url=api_bind.BASE_URL,
                                                   resource='users',
                                                   o_t='listPosts',
                                                   joined_str='&'.join([
@@ -88,12 +89,12 @@ def test_get_post_data():
         with open(thread_file,'r') as fh:
             headers=fh.readline().strip().split('\t')
             timestamp_ix=getEntryIndex(headers,'TIMESTAMP')
-            ctime=api_bind._iso8601_to_unix(kwargs['timestamp'])
+            ctime=iso8601_to_unix(kwargs['timestamp'])
             prev_time=0
             line=fh.readline().strip()
             while line.strip():
                 timestamp=line.strip().split('\t')[timestamp_ix]
-                ttime=api_bind._iso8601_to_unix(timestamp)
+                ttime=iso8601_to_unix(timestamp)
                 assert abs(ttime-ctime)<3600
                 assert ttime>prev_time
                 prev_time=ttime
